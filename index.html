@@ -115,6 +115,15 @@
   }
   button#btnConfirmLocation:active{transform:scale(.98);}
   .map-hint{font-size:12px;color:var(--ink-soft);margin:6px 0 0;text-align:center;}
+  .field textarea{
+    width:100%;padding:12px 14px;
+    border:1.5px solid var(--line);border-radius:10px;
+    font-size:14px;font-family:inherit;
+    background:var(--bg);color:var(--ink);
+    resize:vertical;
+    min-height:70px;
+  }
+  .field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
   button#btnSubmit{
     display:block;width:100%;padding:15px;
     border:none;border-radius:12px;
@@ -173,7 +182,7 @@
 
       <div class="field">
         <label>車輛所在位置（門牌號碼） <span class="required-mark">*</span></label>
-        <input type="text" id="f-location" placeholder="例如：忠孝東路一段100號" autocomplete="off">
+        <input type="text" id="f-location" placeholder="例如：福營路431-8號 忍店" autocomplete="off">
         <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
         <p id="locationStatus"></p>
         <div id="mapContainer">
@@ -181,6 +190,11 @@
           <button type="button" id="btnConfirmLocation">✅ 確認此位置</button>
           <p class="map-hint">請拖曳地圖上的大頭針，移到實際所在位置</p>
         </div>
+      </div>
+
+      <div class="field">
+        <label>備註（選填）</label>
+        <textarea id="f-note" rows="3" placeholder="例如：車輛在路邊、方便聯繫的電話等"></textarea>
       </div>
 
       <button id="btnSubmit" disabled>確認送出</button>
@@ -216,6 +230,7 @@ const btnShareLocation = document.getElementById('btnShareLocation');
 const locationStatus = document.getElementById('locationStatus');
 const mapContainer = document.getElementById('mapContainer');
 const btnConfirmLocation = document.getElementById('btnConfirmLocation');
+const fNote = document.getElementById('f-note');
 const btnSubmit = document.getElementById('btnSubmit');
 const errorMsg = document.getElementById('errorMsg');
 
@@ -299,6 +314,7 @@ function notifyRoadsideRequest(carNo, carLocation){
       line_display_name: lineDisplayName,
       car_no: carNo,
       location: carLocation,
+      note: fNote.value.trim(),
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
 }
