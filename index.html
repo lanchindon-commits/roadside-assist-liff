@@ -182,7 +182,7 @@
 
       <div class="field">
         <label>車輛所在位置（門牌號碼） <span class="required-mark">*</span></label>
-        <input type="text" id="f-location" placeholder="例如：福營路431-8號 忍店" autocomplete="off">
+        <input type="text" id="f-location" placeholder="例如：忠孝東路一段100號" autocomplete="off">
         <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
         <p id="locationStatus"></p>
         <div id="mapContainer">
@@ -300,8 +300,8 @@ btnConfirmLocation.addEventListener('click', () => {
   updateSubmitState();
 });
 
-/* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，如果有位置就一併告知（不等待、不阻塞畫面） */
-function notifyRoadsideRequest(carNo, carLocation){
+/* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，地址、地圖連結、備註分開傳，讓推播訊息可以分段排版（不等待、不阻塞畫面） */
+function notifyRoadsideRequest(carNo, address, mapLink){
   fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
     method: 'POST',
     headers: {
@@ -313,7 +313,8 @@ function notifyRoadsideRequest(carNo, carLocation){
       line_user_id: lineUserId,
       line_display_name: lineDisplayName,
       car_no: carNo,
-      location: carLocation,
+      address: address,
+      map_link: mapLink,
       note: fNote.value.trim(),
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
@@ -370,10 +371,7 @@ btnSubmit.addEventListener('click', async () => {
     }
     screenForm.style.display = 'none';
     screenSuccess.style.display = 'block';
-    const locationLines = [];
-    if(fLocation.value.trim()) locationLines.push(fLocation.value.trim());
-    if(sharedMapLink) locationLines.push(sharedMapLink);
-    notifyRoadsideRequest(carNo, locationLines.join('\n'));
+    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink);
     if(typeof liff !== 'undefined' && liff.isInClient()){
       setTimeout(() => liff.closeWindow(), 2500);
     }
