@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>道路救援登記</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --bg:#F5F2EC;
+    --surface:#FFFFFF;
+    --ink:#1B1B1D;
+    --ink-soft:#63605B;
+    --line:#E3DFD6;
+    --accent:#B4380B;
+    --accent-2:#C81E2C;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  #card{
+    width:100%;
+    max-width:420px;
+    background:var(--surface);
+    border-radius:18px;
+    padding:0 0 28px;
+    box-shadow:0 8px 28px rgba(0,0,0,0.08);
+    text-align:center;
+    overflow:hidden;
+  }
+  .banner{
+    background:var(--accent);
+    color:#fff;
+    padding:26px 24px 22px;
+  }
+  .banner .icon{font-size:34px;margin-bottom:6px;}
+  .banner h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.02em;}
+  .body-pad{padding:24px 26px 0;}
+  p.notice{
+    font-size:15px;
+    color:var(--ink);
+    line-height:1.95;
+    margin:0 0 6px;
+    text-align:center;
+    letter-spacing:.03em;
+  }
+  p.stores{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin:14px 0 24px;
+    padding-top:14px;
+    border-top:1px dashed var(--line);
+  }
+  .field{text-align:left;margin-bottom:18px;}
+  .field label{
+    display:block;font-size:13px;font-weight:700;
+    margin-bottom:6px;color:var(--ink);
+  }
+  .plate-group{
+    display:flex;align-items:center;gap:10px;
+  }
+  .plate-group input{
+    flex:1;min-width:0;
+    padding:14px 10px;
+    border:1.5px solid var(--line);border-radius:10px;
+    font-size:17px;font-family:inherit;font-weight:700;
+    background:var(--bg);color:var(--ink);
+    text-transform:uppercase;
+    text-align:center;
+    letter-spacing:.05em;
+  }
+  .plate-group input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .plate-dash{
+    font-size:20px;font-weight:800;color:var(--ink-soft);
+    flex:0 0 auto;
+  }
+  button#btnSubmit{
+    display:block;width:100%;padding:15px;
+    border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    font-size:16px;font-weight:800;font-family:inherit;
+    cursor:pointer;
+  }
+  button#btnSubmit:disabled{background:#E3B7A5;cursor:not-allowed;}
+  button#btnSubmit:active{transform:scale(.98);}
+  #errorMsg{
+    font-size:13px;color:#C81E2C;margin-top:14px;display:none;
+  }
+  #screen-success{display:none;padding:24px 26px 0;}
+  #screen-success .icon{font-size:44px;color:var(--accent);margin-bottom:8px;}
+  #screen-success h2{font-size:18px;margin:0 0 8px;font-weight:800;}
+  #screen-success p{font-size:14px;color:var(--ink-soft);line-height:1.8;}
+  #screen-loading{padding:60px 0;}
+  .spinner{
+    width:32px;height:32px;border-radius:50%;
+    border:3px solid var(--line);border-top-color:var(--accent);
+    animation:spin .8s linear infinite;margin:0 auto 12px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div id="card">
+
+  <div id="screen-loading">
+    <div class="spinner"></div>
+    <p style="font-size:13.5px;color:var(--ink-soft);margin:0;">載入中，請稍候…</p>
+  </div>
+
+  <div id="screen-form" style="display:none;">
+    <div class="banner">
+      <div class="icon">🚨</div>
+      <h1>道路救援登記</h1>
+    </div>
+    <div class="body-pad">
+      <p class="notice">
+        已收到您的道路救援需求<br>
+        請輸入您的車牌<br>
+        我們將盡快聯繫司機安排趟次
+      </p>
+      <p class="stores">金旺昇 / 忍店 / 金力盛　敬上，感謝您的支持</p>
+
+      <div class="field">
+        <label>車牌號碼</label>
+        <div class="plate-group">
+          <input type="text" id="f-plate-1" placeholder="ABC" autocomplete="off" maxlength="6">
+          <span class="plate-dash">-</span>
+          <input type="text" id="f-plate-2" placeholder="1234" autocomplete="off" maxlength="6">
+        </div>
+      </div>
+
+      <button id="btnSubmit" disabled>確認送出</button>
+      <p id="errorMsg"></p>
+    </div>
+  </div>
+
+  <div id="screen-success">
+    <div class="icon">✅</div>
+    <h2>已收到您的資料</h2>
+    <p>我們將盡快與您聯繫安排救援，<br>請留意 LINE 訊息通知。</p>
+  </div>
+
+</div>
+
+<script>
+/* ========= 設定區 ========= */
+const LIFF_ID = "PUT_YOUR_LIFF_ID_HERE";
+const SUPABASE_URL = "https://hxzdmosganinyhtrswlj.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4emRtb3NnYW5pbnlodHJzd2xqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NjM4MjUsImV4cCI6MjA5ODMzOTgyNX0.78x8GhEP4vqy4rUEVBuihl2JP5u_fLLpKQTgH6wWJWg";
+/* =========================== */
+
+let lineUserId = "";
+let lineDisplayName = "";
+
+const screenLoading = document.getElementById('screen-loading');
+const screenForm = document.getElementById('screen-form');
+const screenSuccess = document.getElementById('screen-success');
+const fPlate1 = document.getElementById('f-plate-1');
+const fPlate2 = document.getElementById('f-plate-2');
+const btnSubmit = document.getElementById('btnSubmit');
+const errorMsg = document.getElementById('errorMsg');
+
+function showError(text){
+  errorMsg.textContent = text;
+  errorMsg.style.display = 'block';
+}
+
+/* 綁定完成後，通知客服人員的自動化：推播訊息詢問客人目前車輛位置（不等待、不阻塞畫面） */
+function notifyRoadsideRequest(carNo){
+  fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      line_user_id: lineUserId,
+      line_display_name: lineDisplayName,
+      car_no: carNo,
+    }),
+  }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
+}
+
+function updateSubmitState(){
+  btnSubmit.disabled = fPlate1.value.trim().length < 2 || fPlate2.value.trim().length < 2;
+}
+fPlate1.addEventListener('input', updateSubmitState);
+fPlate2.addEventListener('input', updateSubmitState);
+
+btnSubmit.addEventListener('click', async () => {
+  const part1 = fPlate1.value.trim();
+  const part2 = fPlate2.value.trim();
+  if(!part1 || !part2) return;
+  const carNo = `${part1}-${part2}`.toUpperCase();
+
+  if(!lineUserId){
+    showError('無法取得您的 LINE 身份，請確認是透過 LINE 開啟此頁面。');
+    return;
+  }
+
+  btnSubmit.disabled = true;
+  btnSubmit.textContent = '送出中…';
+  errorMsg.style.display = 'none';
+
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/bind_line_user`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        p_car_no: carNo,
+        p_line_user_id: lineUserId,
+        p_line_display_name: lineDisplayName || null,
+      }),
+    });
+    if(!res.ok){
+      throw new Error(await res.text());
+    }
+    screenForm.style.display = 'none';
+    screenSuccess.style.display = 'block';
+    notifyRoadsideRequest(carNo);
+    if(typeof liff !== 'undefined' && liff.isInClient()){
+      setTimeout(() => liff.closeWindow(), 2500);
+    }
+  }catch(err){
+    console.error('bind_line_user 失敗:', err);
+    btnSubmit.disabled = false;
+    btnSubmit.textContent = '確認送出';
+    showError('送出失敗，請稍後再試一次。');
+  }
+});
+
+async function initLiff(){
+  try{
+    await liff.init({ liffId: LIFF_ID });
+    if(!liff.isLoggedIn()){
+      if(liff.isInClient()){
+        // 只在 LINE App 內才跳轉登入，瀏覽器開可正常預覽，避免登入迴圈
+        liff.login({ redirectUri: location.href.split('?')[0] });
+        return;
+      }
+      // 瀏覽器環境未登入：仍顯示表單，但送出時會因缺少 lineUserId 而提示改用 LINE 開啟
+    } else {
+      const profile = await liff.getProfile();
+      lineUserId = profile.userId;
+      lineDisplayName = profile.displayName;
+    }
+  }catch(err){
+    console.warn('LIFF 初始化失敗:', err);
+  }finally{
+    screenLoading.style.display = 'none';
+    screenForm.style.display = 'block';
+  }
+}
+
+initLiff();
+</script>
+</body>
+</html>
