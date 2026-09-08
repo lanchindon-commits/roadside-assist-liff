@@ -84,6 +84,23 @@
     font-size:20px;font-weight:800;color:var(--ink-soft);
     flex:0 0 auto;
   }
+  .field input#f-location{
+    width:100%;padding:14px 15px;
+    border:1.5px solid var(--line);border-radius:10px;
+    font-size:15px;font-family:inherit;
+    background:var(--bg);color:var(--ink);
+  }
+  .field input#f-location:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  button#btnShareLocation{
+    display:block;width:100%;padding:11px;margin-top:8px;
+    border:1.5px solid var(--accent);border-radius:10px;
+    background:#fff;color:var(--accent);
+    font-size:13.5px;font-weight:700;font-family:inherit;
+    cursor:pointer;
+  }
+  button#btnShareLocation:disabled{opacity:.6;cursor:not-allowed;}
+  button#btnShareLocation:active{transform:scale(.98);}
+  #locationStatus{font-size:12.5px;color:var(--ink-soft);margin:6px 0 0;display:none;}
   button#btnSubmit{
     display:block;width:100%;padding:15px;
     border:none;border-radius:12px;
@@ -140,6 +157,13 @@
         </div>
       </div>
 
+      <div class="field">
+        <label>車輛所在位置（門牌號碼）</label>
+        <input type="text" id="f-location" placeholder="例如：忠孝東路一段100號" autocomplete="off">
+        <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
+        <p id="locationStatus"></p>
+      </div>
+
       <button id="btnSubmit" disabled>確認送出</button>
       <p id="errorMsg"></p>
     </div>
@@ -168,6 +192,9 @@ const screenForm = document.getElementById('screen-form');
 const screenSuccess = document.getElementById('screen-success');
 const fPlate1 = document.getElementById('f-plate-1');
 const fPlate2 = document.getElementById('f-plate-2');
+const fLocation = document.getElementById('f-location');
+const btnShareLocation = document.getElementById('btnShareLocation');
+const locationStatus = document.getElementById('locationStatus');
 const btnSubmit = document.getElementById('btnSubmit');
 const errorMsg = document.getElementById('errorMsg');
 
@@ -176,8 +203,42 @@ function showError(text){
   errorMsg.style.display = 'block';
 }
 
-/* 綁定完成後，通知客服人員的自動化：推播訊息詢問客人目前車輛位置（不等待、不阻塞畫面） */
-function notifyRoadsideRequest(carNo){
+/* 客人分享的 GPS 地圖連結，跟手動輸入的門牌地址分開存，兩個都可以同時送出 */
+let sharedMapLink = "";
+
+/* 客人點「分享目前所在位置」：用瀏覽器定位，抓到座標後轉成 Google 地圖連結（不覆蓋已輸入的門牌地址） */
+btnShareLocation.addEventListener('click', () => {
+  if(!navigator.geolocation){
+    locationStatus.style.display = 'block';
+    locationStatus.textContent = '此瀏覽器不支援自動定位，請手動輸入門牌地址。';
+    return;
+  }
+  btnShareLocation.disabled = true;
+  btnShareLocation.textContent = '定位中…';
+  locationStatus.style.display = 'block';
+  locationStatus.textContent = '正在取得您目前的位置…';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lng = pos.coords.longitude.toFixed(6);
+      sharedMapLink = `https://maps.google.com/?q=${lat},${lng}`;
+      locationStatus.textContent = '✅ 已取得您目前的位置（地圖連結會一併送出）';
+      btnShareLocation.disabled = false;
+      btnShareLocation.textContent = '📍 重新分享位置';
+    },
+    (err) => {
+      console.warn('取得位置失敗:', err);
+      locationStatus.textContent = '⚠️ 無法取得位置，請手動輸入門牌地址。';
+      btnShareLocation.disabled = false;
+      btnShareLocation.textContent = '📍 分享目前所在位置';
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+});
+
+/* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，如果有位置就一併告知（不等待、不阻塞畫面） */
+function notifyRoadsideRequest(carNo, carLocation){
   fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
     method: 'POST',
     headers: {
@@ -189,6 +250,7 @@ function notifyRoadsideRequest(carNo){
       line_user_id: lineUserId,
       line_display_name: lineDisplayName,
       car_no: carNo,
+      location: carLocation,
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
 }
@@ -233,7 +295,10 @@ btnSubmit.addEventListener('click', async () => {
     }
     screenForm.style.display = 'none';
     screenSuccess.style.display = 'block';
-    notifyRoadsideRequest(carNo);
+    const locationLines = [];
+    if(fLocation.value.trim()) locationLines.push(fLocation.value.trim());
+    if(sharedMapLink) locationLines.push(sharedMapLink);
+    notifyRoadsideRequest(carNo, locationLines.join('\n'));
     if(typeof liff !== 'undefined' && liff.isInClient()){
       setTimeout(() => liff.closeWindow(), 2500);
     }
