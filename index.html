@@ -124,6 +124,19 @@
     resize:vertical;
     min-height:70px;
   }
+  .store-group{display:flex;flex-direction:column;gap:8px;}
+  .store-option{
+    display:block;width:100%;text-align:left;
+    padding:12px 14px;
+    border:1.5px solid var(--line);border-radius:10px;
+    background:var(--bg);color:var(--ink);
+    font-family:inherit;cursor:pointer;
+  }
+  .store-option .store-name{font-size:14.5px;font-weight:800;}
+  .store-option .store-addr{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .store-option.selected{border-color:var(--accent);background:#FBEAE0;}
+  .store-option.selected .store-name{color:var(--accent);}
+  .store-option:active{transform:scale(.99);}
   .field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
   button#btnSubmit{
     display:block;width:100%;padding:15px;
@@ -183,13 +196,31 @@
 
       <div class="field">
         <label>車輛所在位置（門牌號碼） <span class="required-mark">*</span></label>
-        <input type="text" id="f-location" placeholder="例如：忠孝東路一段100號" autocomplete="off">
+        <input type="text" id="f-location" placeholder="例如：新莊區福營路431-8號　忍店" autocomplete="off">
         <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
         <p id="locationStatus"></p>
         <div id="mapContainer">
           <div id="map"></div>
           <button type="button" id="btnConfirmLocation">✅ 確認此位置</button>
           <p class="map-hint">請拖曳地圖上的大頭針，移到實際所在位置</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>請問您的車子要送至哪一家店 <span class="required-mark">*</span></label>
+        <div class="store-group" id="storeGroup">
+          <button type="button" class="store-option" data-store="金旺昇" data-addr="新莊區中正路833號">
+            <div class="store-name">金旺昇</div>
+            <div class="store-addr">新莊區中正路833號</div>
+          </button>
+          <button type="button" class="store-option" data-store="忍店" data-addr="新莊區福營路4314-8號">
+            <div class="store-name">忍店</div>
+            <div class="store-addr">新莊區福營路4314-8號</div>
+          </button>
+          <button type="button" class="store-option" data-store="金力盛" data-addr="新莊區新樹路148號">
+            <div class="store-name">金力盛</div>
+            <div class="store-addr">新莊區新樹路148號</div>
+          </button>
         </div>
       </div>
 
@@ -232,6 +263,8 @@ const locationStatus = document.getElementById('locationStatus');
 const mapContainer = document.getElementById('mapContainer');
 const btnConfirmLocation = document.getElementById('btnConfirmLocation');
 const fNote = document.getElementById('f-note');
+const storeGroup = document.getElementById('storeGroup');
+const storeOptions = Array.from(storeGroup.querySelectorAll('.store-option'));
 const btnSubmit = document.getElementById('btnSubmit');
 const errorMsg = document.getElementById('errorMsg');
 
@@ -290,6 +323,16 @@ btnShareLocation.addEventListener('click', () => {
   );
 });
 
+/* 客人點選要送去哪一家店：單選，點哪個就高亮哪個 */
+let selectedStore = "";
+storeOptions.forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedStore = btn.dataset.store;
+    storeOptions.forEach(b => b.classList.toggle('selected', b === btn));
+    updateSubmitState();
+  });
+});
+
 /* 客人拖曳大頭針到正確位置後按下確認：抓最終座標存成地圖連結 */
 btnConfirmLocation.addEventListener('click', () => {
   const pos = leafletMarker.getLatLng();
@@ -302,7 +345,7 @@ btnConfirmLocation.addEventListener('click', () => {
 });
 
 /* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，地址、地圖連結、備註分開傳，讓推播訊息可以分段排版（不等待、不阻塞畫面） */
-function notifyRoadsideRequest(carNo, address, mapLink){
+function notifyRoadsideRequest(carNo, address, mapLink, store){
   fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
     method: 'POST',
     headers: {
@@ -316,6 +359,7 @@ function notifyRoadsideRequest(carNo, address, mapLink){
       car_no: carNo,
       address: address,
       map_link: mapLink,
+      store: store,
       note: fNote.value.trim(),
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
@@ -327,7 +371,7 @@ function hasLocation(){
 
 function updateSubmitState(){
   const plateOk = fPlate1.value.trim().length >= 2 && fPlate2.value.trim().length >= 2;
-  btnSubmit.disabled = !(plateOk && hasLocation());
+  btnSubmit.disabled = !(plateOk && hasLocation() && selectedStore);
 }
 fPlate1.addEventListener('input', updateSubmitState);
 fPlate2.addEventListener('input', updateSubmitState);
@@ -341,6 +385,11 @@ btnSubmit.addEventListener('click', async () => {
 
   if(!hasLocation()){
     showError('請填寫車輛所在位置，或分享目前所在位置。');
+    return;
+  }
+
+  if(!selectedStore){
+    showError('請選擇要送至哪一家店。');
     return;
   }
 
@@ -372,7 +421,7 @@ btnSubmit.addEventListener('click', async () => {
     }
     screenForm.style.display = 'none';
     screenSuccess.style.display = 'block';
-    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink);
+    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink, selectedStore);
     if(typeof liff !== 'undefined' && liff.isInClient()){
       setTimeout(() => liff.closeWindow(), 2500);
     }
