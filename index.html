@@ -465,7 +465,8 @@ function allRequiredPhotosOk(){
 
 /* 把壓縮好的照片上傳到 Supabase Storage，回傳可公開讀取的網址（LINE 推播圖片要用得到） */
 async function uploadPhoto(key, blob, carNo){
-  const path = `${carNo}/${Date.now()}-${key}.jpg`;
+  const safeCarNo = carNo.replace(/[^A-Za-z0-9]/g, '');
+  const path = `${Date.now()}-${safeCarNo}-${key}.jpg`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/roadside-photos/${path}`, {
     method: 'POST',
     headers: {
