@@ -245,11 +245,11 @@
         </div>
 
         <div class="photo-field" data-key="other">
-          <label class="photo-btn" for="photoInput-other" id="photoBtn-other">📷 其他照片（選填）</label>
-          <p class="photo-hint">如有明顯故障處、儀表板警示燈，或想補充說明的狀況，可以拍照上傳</p>
+          <label class="photo-btn" for="photoInput-other" id="photoBtn-other">📷 行照照片（必拍）</label>
+          <p class="photo-hint">請拍攝行照，確保車主資料與車牌號碼清晰可見</p>
           <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoInput-other">
           <div class="photo-preview" id="photoPreview-other">
-            <img id="photoImg-other" alt="其他照片">
+            <img id="photoImg-other" alt="行照照片">
             <button type="button" class="retake" data-key="other">重新拍攝</button>
           </div>
         </div>
@@ -325,7 +325,7 @@ const mapContainer = document.getElementById('mapContainer');
 const btnConfirmLocation = document.getElementById('btnConfirmLocation');
 const fNote = document.getElementById('f-note');
 const PHOTO_KEYS = ['plate', 'vehicle', 'scene', 'other'];
-const PHOTO_REQUIRED = { plate: true, vehicle: true, scene: true, other: false };
+const PHOTO_REQUIRED = { plate: true, vehicle: true, scene: true, other: true };
 const photoFiles = {};
 const storeGroup = document.getElementById('storeGroup');
 const storeOptions = Array.from(storeGroup.querySelectorAll('.store-option'));
@@ -544,7 +544,7 @@ btnSubmit.addEventListener('click', async () => {
   }
 
   if(!allRequiredPhotosOk()){
-    showError('請拍攝車牌、車輛、現場三張必拍照片。');
+    showError('請拍攝車牌、車輛、現場、行照四張必拍照片。');
     return;
   }
 
