@@ -137,6 +137,23 @@
   .store-option.selected{border-color:var(--accent);background:#FBEAE0;}
   .store-option.selected .store-name{color:var(--accent);}
   .store-option:active{transform:scale(.99);}
+  .photo-field{margin-bottom:14px;}
+  .photo-field .photo-hint{font-size:11.5px;color:var(--ink-soft);margin:0 0 6px;line-height:1.5;}
+  .photo-input{display:none;}
+  .photo-btn{
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    width:100%;padding:14px;border:1.5px dashed var(--line);border-radius:10px;
+    background:var(--bg);color:var(--ink-soft);font-size:13px;font-weight:700;
+    cursor:pointer;text-align:center;
+  }
+  .photo-btn.has-photo{border-style:solid;border-color:var(--accent);color:var(--accent);}
+  .photo-preview{margin-top:8px;display:none;position:relative;}
+  .photo-preview img{width:100%;border-radius:10px;display:block;max-height:160px;object-fit:cover;}
+  .photo-preview .retake{
+    position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;
+    border:none;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;
+    font-family:inherit;cursor:pointer;
+  }
   .field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
   button#btnSubmit{
     display:block;width:100%;padding:15px;
@@ -191,6 +208,50 @@
           <input type="text" id="f-plate-1" placeholder="ABC" autocomplete="off" maxlength="6">
           <span class="plate-dash">-</span>
           <input type="text" id="f-plate-2" placeholder="1234" autocomplete="off" maxlength="6">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>照片上傳</label>
+
+        <div class="photo-field" data-key="plate">
+          <label class="photo-btn" for="photoInput-plate" id="photoBtn-plate">📷 車牌照片（必拍）</label>
+          <p class="photo-hint">請正面拍攝車牌，確保號碼清晰、不要反光</p>
+          <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoInput-plate">
+          <div class="photo-preview" id="photoPreview-plate">
+            <img id="photoImg-plate" alt="車牌照片">
+            <button type="button" class="retake" data-key="plate">重新拍攝</button>
+          </div>
+        </div>
+
+        <div class="photo-field" data-key="vehicle">
+          <label class="photo-btn" for="photoInput-vehicle" id="photoBtn-vehicle">📷 車輛照片（必拍）</label>
+          <p class="photo-hint">請拍攝車輛整體外觀（建議側面 45 度角）</p>
+          <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoInput-vehicle">
+          <div class="photo-preview" id="photoPreview-vehicle">
+            <img id="photoImg-vehicle" alt="車輛照片">
+            <button type="button" class="retake" data-key="vehicle">重新拍攝</button>
+          </div>
+        </div>
+
+        <div class="photo-field" data-key="scene">
+          <label class="photo-btn" for="photoInput-scene" id="photoBtn-scene">📷 現場照片（必拍）</label>
+          <p class="photo-hint">請拍攝車輛周圍的道路狀況（例如路口、斜坡、車道中間），方便司機判斷如何抵達</p>
+          <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoInput-scene">
+          <div class="photo-preview" id="photoPreview-scene">
+            <img id="photoImg-scene" alt="現場照片">
+            <button type="button" class="retake" data-key="scene">重新拍攝</button>
+          </div>
+        </div>
+
+        <div class="photo-field" data-key="other">
+          <label class="photo-btn" for="photoInput-other" id="photoBtn-other">📷 其他照片（選填）</label>
+          <p class="photo-hint">如有明顯故障處、儀表板警示燈，或想補充說明的狀況，可以拍照上傳</p>
+          <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoInput-other">
+          <div class="photo-preview" id="photoPreview-other">
+            <img id="photoImg-other" alt="其他照片">
+            <button type="button" class="retake" data-key="other">重新拍攝</button>
+          </div>
         </div>
       </div>
 
@@ -263,6 +324,9 @@ const locationStatus = document.getElementById('locationStatus');
 const mapContainer = document.getElementById('mapContainer');
 const btnConfirmLocation = document.getElementById('btnConfirmLocation');
 const fNote = document.getElementById('f-note');
+const PHOTO_KEYS = ['plate', 'vehicle', 'scene', 'other'];
+const PHOTO_REQUIRED = { plate: true, vehicle: true, scene: true, other: false };
+const photoFiles = {};
 const storeGroup = document.getElementById('storeGroup');
 const storeOptions = Array.from(storeGroup.querySelectorAll('.store-option'));
 const btnSubmit = document.getElementById('btnSubmit');
@@ -333,6 +397,91 @@ storeOptions.forEach(btn => {
   });
 });
 
+/* 照片：選好照片後先在瀏覽器端壓縮（避免路邊網路慢、上傳半天），再存成 Blob 等送出時上傳 */
+function compressImage(file, maxSize, quality){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > height && width > maxSize){
+          height = Math.round(height * maxSize / width);
+          width = maxSize;
+        }else if(height >= width && height > maxSize){
+          width = Math.round(width * maxSize / height);
+          height = maxSize;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if(blob) resolve(blob); else reject(new Error('compress failed'));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+PHOTO_KEYS.forEach((key) => {
+  const input = document.getElementById(`photoInput-${key}`);
+  const btn = document.getElementById(`photoBtn-${key}`);
+  const preview = document.getElementById(`photoPreview-${key}`);
+  const img = document.getElementById(`photoImg-${key}`);
+  const btnLabel = btn.textContent;
+
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if(!file) return;
+    btn.textContent = '處理中…';
+    try{
+      const compressed = await compressImage(file, 1280, 0.72);
+      photoFiles[key] = compressed;
+      img.src = URL.createObjectURL(compressed);
+      preview.style.display = 'block';
+      btn.classList.add('has-photo');
+      btn.textContent = '✅ 已拍攝（點擊可重拍）';
+    }catch(err){
+      console.warn('照片處理失敗:', err);
+      btn.textContent = btnLabel;
+    }
+    updateSubmitState();
+  });
+
+  preview.querySelector('.retake').addEventListener('click', (e) => {
+    e.preventDefault();
+    input.click();
+  });
+});
+
+function allRequiredPhotosOk(){
+  return PHOTO_KEYS.filter((k) => PHOTO_REQUIRED[k]).every((k) => !!photoFiles[k]);
+}
+
+/* 把壓縮好的照片上傳到 Supabase Storage，回傳可公開讀取的網址（LINE 推播圖片要用得到） */
+async function uploadPhoto(key, blob, carNo){
+  const path = `${carNo}/${Date.now()}-${key}.jpg`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/roadside-photos/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'image/jpeg',
+      'x-upsert': 'true',
+    },
+    body: blob,
+  });
+  if(!res.ok){
+    throw new Error(await res.text());
+  }
+  return `${SUPABASE_URL}/storage/v1/object/public/roadside-photos/${path}`;
+}
+
 /* 客人拖曳大頭針到正確位置後按下確認：抓最終座標存成地圖連結 */
 btnConfirmLocation.addEventListener('click', () => {
   const pos = leafletMarker.getLatLng();
@@ -345,7 +494,7 @@ btnConfirmLocation.addEventListener('click', () => {
 });
 
 /* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，地址、地圖連結、備註分開傳，讓推播訊息可以分段排版（不等待、不阻塞畫面） */
-function notifyRoadsideRequest(carNo, address, mapLink, store){
+function notifyRoadsideRequest(carNo, address, mapLink, store, photoUrls){
   fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
     method: 'POST',
     headers: {
@@ -361,6 +510,7 @@ function notifyRoadsideRequest(carNo, address, mapLink, store){
       map_link: mapLink,
       store: store,
       note: fNote.value.trim(),
+      photo_urls: photoUrls,
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
 }
@@ -371,7 +521,7 @@ function hasLocation(){
 
 function updateSubmitState(){
   const plateOk = fPlate1.value.trim().length >= 2 && fPlate2.value.trim().length >= 2;
-  btnSubmit.disabled = !(plateOk && hasLocation() && selectedStore);
+  btnSubmit.disabled = !(plateOk && hasLocation() && selectedStore && allRequiredPhotosOk());
 }
 fPlate1.addEventListener('input', updateSubmitState);
 fPlate2.addEventListener('input', updateSubmitState);
@@ -393,14 +543,37 @@ btnSubmit.addEventListener('click', async () => {
     return;
   }
 
+  if(!allRequiredPhotosOk()){
+    showError('請拍攝車牌、車輛、現場三張必拍照片。');
+    return;
+  }
+
   if(!lineUserId){
     showError('無法取得您的 LINE 身份，請確認是透過 LINE 開啟此頁面。');
     return;
   }
 
   btnSubmit.disabled = true;
-  btnSubmit.textContent = '送出中…';
+  btnSubmit.textContent = '上傳照片中…';
   errorMsg.style.display = 'none';
+
+  let photoUrls = [];
+  try{
+    for(const key of PHOTO_KEYS){
+      if(photoFiles[key]){
+        const url = await uploadPhoto(key, photoFiles[key], carNo);
+        photoUrls.push(url);
+      }
+    }
+  }catch(err){
+    console.error('照片上傳失敗:', err);
+    btnSubmit.disabled = false;
+    btnSubmit.textContent = '確認送出';
+    showError('照片上傳失敗，請稍後再試一次。');
+    return;
+  }
+
+  btnSubmit.textContent = '送出中…';
 
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/bind_line_user`, {
@@ -421,7 +594,7 @@ btnSubmit.addEventListener('click', async () => {
     }
     screenForm.style.display = 'none';
     screenSuccess.style.display = 'block';
-    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink, selectedStore);
+    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink, selectedStore, photoUrls);
     if(typeof liff !== 'undefined' && liff.isInClient()){
       setTimeout(() => liff.closeWindow(), 2500);
     }
