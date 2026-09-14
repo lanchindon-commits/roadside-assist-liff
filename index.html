@@ -7,6 +7,8 @@
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
     --bg:#F5F2EC;
@@ -463,16 +465,87 @@ function allRequiredPhotosOk(){
   return PHOTO_KEYS.filter((k) => PHOTO_REQUIRED[k]).every((k) => !!photoFiles[k]);
 }
 
-/* 把壓縮好的照片上傳到 Supabase Storage，回傳可公開讀取的網址（LINE 推播圖片要用得到） */
-async function uploadPhoto(key, blob, carNo){
+/* 四張照片各自的標題（PDF 排版用） */
+const PHOTO_LABELS = {
+  plate: '① 車牌照片',
+  vehicle: '② 車輛照片',
+  scene: '③ 現場照片',
+  other: '④ 行照照片',
+};
+
+/* 把 4 張照片組成單頁 PDF：畫面用 HTML/CSS 排版（中文才能正常顯示），
+   截圖成圖片後嵌入 PDF，橘色標題較小、下面 2x2 排列 4 張照片、每張旁邊配小標題 */
+async function buildPhotoPdfBlob(carNo, store, address, note){
+  const dateStr = new Date().toLocaleString('zh-TW', { hour12: false });
+
+  const infoParts = [];
+  if(carNo) infoParts.push(`車牌：${carNo}`);
+  if(store) infoParts.push(`店家：${store}`);
+  if(address) infoParts.push(`地址：${address}`);
+  if(note) infoParts.push(`備註：${note}`);
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:-99999px;top:0;width:800px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;';
+  wrap.innerHTML = `
+    <div style="background:#B4380B;color:#fff;padding:20px 24px 16px;text-align:center;">
+      <div style="font-size:22px;font-weight:800;letter-spacing:.02em;">道路救援　拍照紀錄</div>
+      <div style="font-size:12.5px;margin-top:6px;opacity:.92;">${carNo || ''}　·　${store || ''}　·　${dateStr}</div>
+    </div>
+    <div style="padding:14px 24px;text-align:center;font-size:12.5px;color:#63605B;border-bottom:1px solid #E3DFD6;">
+      ${infoParts.join('　　')}
+    </div>
+    <div id="pdfGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px 24px 22px;"></div>
+    <div style="padding:0 24px 18px;text-align:center;font-size:11px;color:#9A968D;">此檔案由系統自動產生，供維修人員／司機參考</div>
+  `;
+
+  const grid = wrap.querySelector('#pdfGrid');
+  const imgEls = [];
+  PHOTO_KEYS.forEach((key) => {
+    const cell = document.createElement('div');
+    cell.style.cssText = 'border:1px solid #E3DFD6;border-radius:6px;overflow:hidden;';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:13px;font-weight:700;color:#1B1B1D;padding:6px 8px;background:#F5F2EC;';
+    label.textContent = PHOTO_LABELS[key] || key;
+    const img = document.createElement('img');
+    img.style.cssText = 'display:block;width:100%;height:260px;object-fit:cover;';
+    if(photoFiles[key]) img.src = URL.createObjectURL(photoFiles[key]);
+    cell.appendChild(label);
+    cell.appendChild(img);
+    grid.appendChild(cell);
+    imgEls.push(img);
+  });
+
+  document.body.appendChild(wrap);
+
+  await Promise.all(imgEls.map((img) => img.complete
+    ? Promise.resolve()
+    : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; })));
+
+  const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+  document.body.removeChild(wrap);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgW = pageW;
+  const imgH = (canvas.height * imgW) / canvas.width;
+  const y = imgH < pageH ? (pageH - imgH) / 2 : 0;
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, y, imgW, Math.min(imgH, pageH));
+
+  return pdf.output('blob');
+}
+
+/* 把組合好的 PDF 上傳到 Supabase Storage，回傳可公開讀取的網址（LINE 卡片的「查看照片」連結要用得到） */
+async function uploadPhotoPdf(blob, carNo){
   const safeCarNo = carNo.replace(/[^A-Za-z0-9]/g, '');
-  const path = `${Date.now()}-${safeCarNo}-${key}.jpg`;
+  const path = `${Date.now()}-${safeCarNo}.pdf`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/roadside-photos/${path}`, {
     method: 'POST',
     headers: {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'image/jpeg',
+      'Content-Type': 'application/pdf',
       'x-upsert': 'true',
     },
     body: blob,
@@ -495,7 +568,7 @@ btnConfirmLocation.addEventListener('click', () => {
 });
 
 /* 綁定完成後，通知客服人員的自動化：推播訊息確認收到資料，地址、地圖連結、備註分開傳，讓推播訊息可以分段排版（不等待、不阻塞畫面） */
-function notifyRoadsideRequest(carNo, address, mapLink, store, photoUrls){
+function notifyRoadsideRequest(carNo, address, mapLink, store, photoPdfUrl){
   fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-request`, {
     method: 'POST',
     headers: {
@@ -511,7 +584,7 @@ function notifyRoadsideRequest(carNo, address, mapLink, store, photoUrls){
       map_link: mapLink,
       store: store,
       note: fNote.value.trim(),
-      photo_urls: photoUrls,
+      photo_pdf_url: photoPdfUrl,
     }),
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
 }
@@ -555,22 +628,19 @@ btnSubmit.addEventListener('click', async () => {
   }
 
   btnSubmit.disabled = true;
-  btnSubmit.textContent = '上傳照片中…';
+  btnSubmit.textContent = '整理照片中…';
   errorMsg.style.display = 'none';
 
-  let photoUrls = [];
+  let photoPdfUrl = '';
   try{
-    for(const key of PHOTO_KEYS){
-      if(photoFiles[key]){
-        const url = await uploadPhoto(key, photoFiles[key], carNo);
-        photoUrls.push(url);
-      }
-    }
+    const pdfBlob = await buildPhotoPdfBlob(carNo, selectedStore, fLocation.value.trim(), fNote.value.trim());
+    btnSubmit.textContent = '上傳照片中…';
+    photoPdfUrl = await uploadPhotoPdf(pdfBlob, carNo);
   }catch(err){
-    console.error('照片上傳失敗:', err);
+    console.error('照片整理或上傳失敗:', err);
     btnSubmit.disabled = false;
     btnSubmit.textContent = '確認送出';
-    showError('照片上傳失敗，請稍後再試一次。');
+    showError('照片整理或上傳失敗，請稍後再試一次。');
     return;
   }
 
@@ -595,7 +665,7 @@ btnSubmit.addEventListener('click', async () => {
     }
     screenForm.style.display = 'none';
     screenSuccess.style.display = 'block';
-    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink, selectedStore, photoUrls);
+    notifyRoadsideRequest(carNo, fLocation.value.trim(), sharedMapLink, selectedStore, photoPdfUrl);
     if(typeof liff !== 'undefined' && liff.isInClient()){
       setTimeout(() => liff.closeWindow(), 2500);
     }
