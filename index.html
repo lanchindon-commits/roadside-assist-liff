@@ -214,6 +214,17 @@
       </div>
 
       <div class="field">
+        <label>分享目前所在位置（建議先做，方便司機定位）</label>
+        <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
+        <p id="locationStatus"></p>
+        <div id="mapContainer">
+          <div id="map"></div>
+          <button type="button" id="btnConfirmLocation">✅ 確認此位置</button>
+          <p class="map-hint">請拖曳地圖上的大頭針，移到實際所在位置</p>
+        </div>
+      </div>
+
+      <div class="field">
         <label>照片上傳</label>
 
         <div class="photo-field" data-key="plate">
@@ -260,13 +271,6 @@
       <div class="field">
         <label>車輛所在位置（門牌號碼） <span class="required-mark">*</span></label>
         <input type="text" id="f-location" placeholder="例如：新莊區福營路431-8號　忍店" autocomplete="off">
-        <button type="button" id="btnShareLocation">📍 分享目前所在位置</button>
-        <p id="locationStatus"></p>
-        <div id="mapContainer">
-          <div id="map"></div>
-          <button type="button" id="btnConfirmLocation">✅ 確認此位置</button>
-          <p class="map-hint">請拖曳地圖上的大頭針，移到實際所在位置</p>
-        </div>
       </div>
 
       <div class="field">
