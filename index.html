@@ -240,6 +240,26 @@
     animation:spin .8s linear infinite;margin:0 auto 12px;
   }
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* 已綁定車牌選擇區 */
+  .bound-list{display:flex;flex-direction:column;gap:8px;}
+  .bound-item{
+    display:flex;align-items:center;gap:10px;width:100%;
+    padding:14px 15px;border:1.5px solid var(--line);border-radius:10px;
+    background:var(--bg);color:var(--ink);cursor:pointer;
+    font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.05em;text-align:left;
+  }
+  .bound-item .dot{
+    width:18px;height:18px;border-radius:50%;border:1.5px solid #bdb8ad;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .bound-item.selected{border-color:var(--accent);background:#fff;}
+  .bound-item.selected .dot{border-color:var(--accent);background:var(--accent);}
+  .bound-item.selected .dot::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff;}
+  .link-btn{
+    background:none;border:none;padding:10px 0 0;font-size:13px;color:var(--ink-soft);
+    text-decoration:underline;cursor:pointer;font-family:inherit;
+  }
 </style>
 </head>
 <body>
@@ -291,11 +311,16 @@
 
       <div class="field">
         <label>車牌號碼 <span class="required-mark">*</span></label>
-        <div class="plate-group">
+        <div id="on-bound-box" style="display:none;">
+          <div class="bound-list" id="on-bound-list"></div>
+          <button type="button" class="link-btn" id="on-other-car">這不是我的車／換一台車</button>
+        </div>
+        <div class="plate-group" id="on-plate-group">
           <input type="text" id="on-plate-1" placeholder="ABC" autocomplete="off" maxlength="6">
           <span class="plate-dash">-</span>
           <input type="text" id="on-plate-2" placeholder="1234" autocomplete="off" maxlength="6">
         </div>
+        <button type="button" class="link-btn" id="on-back-bound" style="display:none;">‹ 回到我已綁定的車</button>
       </div>
 
       <div class="field">
@@ -353,11 +378,16 @@
 
       <div class="field">
         <label>車牌號碼 <span class="required-mark">*</span></label>
-        <div class="plate-group">
+        <div id="off-bound-box" style="display:none;">
+          <div class="bound-list" id="off-bound-list"></div>
+          <button type="button" class="link-btn" id="off-other-car">這不是我的車／換一台車</button>
+        </div>
+        <div class="plate-group" id="off-plate-group">
           <input type="text" id="off-plate-1" placeholder="ABC" autocomplete="off" maxlength="6">
           <span class="plate-dash">-</span>
           <input type="text" id="off-plate-2" placeholder="1234" autocomplete="off" maxlength="6">
         </div>
+        <button type="button" class="link-btn" id="off-back-bound" style="display:none;">‹ 回到我已綁定的車</button>
       </div>
 
       <div class="field">
@@ -499,7 +529,7 @@ function notifyRoadsideRequest(payload){
   }).catch(err => console.warn('notify-roadside-request 呼叫失敗:', err));
 }
 
-async function bindLineUser(carNo){
+async function bindLineUser(carNo, confirmAction){
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/bind_line_user`, {
     method: 'POST',
     headers: {
@@ -511,6 +541,7 @@ async function bindLineUser(carNo){
       p_car_no: carNo,
       p_line_user_id: lineUserId,
       p_line_display_name: lineDisplayName || null,
+      ...(confirmAction ? { p_confirm_action: confirmAction } : {}),
     }),
   });
   if(!res.ok) throw new Error(await res.text());
@@ -837,7 +868,8 @@ async function handleSubmit(scenario){
 
   btn.textContent = '送出中…';
   try{
-    await bindLineUser(carNo);
+    // 這台車本來就綁在這個 LINE 帳號：用 'add'，多車客人才不會被擋在「要新增還是打錯」的確認
+    await bindLineUser(carNo, isKnownBound(carNo) ? 'add' : null);
     showScreen('success');
     notifyRoadsideRequest({
       scenario, // 'onsite' | 'offsite' —— 後端 notify-roadside-request 這支 Edge Function 需要能吃這個新欄位
@@ -864,6 +896,91 @@ async function handleSubmit(scenario){
 document.getElementById('on-btnSubmit').addEventListener('click', () => handleSubmit('onsite'));
 document.getElementById('off-btnSubmit').addEventListener('click', () => handleSubmit('offsite'));
 
+/* ---------- 已綁定車牌：查詢與選擇 ---------- */
+let boundCars = [];            // 這個 LINE 帳號已綁定的車牌（含橫線）
+const boundSel = { on: null, off: null };
+
+function normPlate(p){ return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function isKnownBound(carNo){
+  const n = normPlate(carNo);
+  return boundCars.some(c => normPlate(c) === n);
+}
+
+async function fetchBoundCars(){
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 5000) : null;
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/liff_list_bindings`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_line_user_id: lineUserId }),
+      signal: ctrl ? ctrl.signal : undefined,
+    });
+    if(!res.ok) return [];
+    const d = await res.json();
+    return (d && Array.isArray(d.cars)) ? d.cars : [];
+  }catch(err){
+    console.warn('查詢已綁定車牌失敗，改用手動輸入:', err);
+    return [];   // 查詢失敗就當作沒有綁定紀錄，維持原本手動輸入流程
+  }finally{
+    if(timer) clearTimeout(timer);
+  }
+}
+
+function setPlateInputs(prefix, car){
+  const i = car ? car.indexOf('-') : -1;
+  document.getElementById(`${prefix}-plate-1`).value = i > 0 ? car.slice(0, i) : '';
+  document.getElementById(`${prefix}-plate-2`).value = i > 0 ? car.slice(i + 1) : '';
+  // 觸發原本的送出按鈕狀態檢查
+  document.getElementById(`${prefix}-plate-1`).dispatchEvent(new Event('input'));
+}
+
+function renderBoundList(prefix){
+  const list = document.getElementById(`${prefix}-bound-list`);
+  list.innerHTML = '';
+  boundCars.forEach(car => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'bound-item' + (boundSel[prefix] === car ? ' selected' : '');
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const txt = document.createElement('span'); txt.textContent = car;
+    item.appendChild(dot); item.appendChild(txt);
+    item.addEventListener('click', () => {
+      boundSel[prefix] = car;
+      setPlateInputs(prefix, car);
+      renderBoundList(prefix);
+    });
+    list.appendChild(item);
+  });
+}
+
+function showBoundMode(prefix){
+  document.getElementById(`${prefix}-bound-box`).style.display = '';
+  document.getElementById(`${prefix}-plate-group`).style.display = 'none';
+  document.getElementById(`${prefix}-back-bound`).style.display = 'none';
+  boundSel[prefix] = (boundCars.length === 1) ? boundCars[0] : null;
+  setPlateInputs(prefix, boundSel[prefix]);
+  renderBoundList(prefix);
+}
+function showManualMode(prefix){
+  boundSel[prefix] = null;
+  setPlateInputs(prefix, null);
+  document.getElementById(`${prefix}-bound-box`).style.display = 'none';
+  document.getElementById(`${prefix}-plate-group`).style.display = '';
+  document.getElementById(`${prefix}-back-bound`).style.display = boundCars.length ? '' : 'none';
+}
+function setupBoundUI(){
+  ['on', 'off'].forEach(prefix => {
+    document.getElementById(`${prefix}-other-car`).addEventListener('click', () => showManualMode(prefix));
+    document.getElementById(`${prefix}-back-bound`).addEventListener('click', () => showBoundMode(prefix));
+    if(boundCars.length > 0) showBoundMode(prefix);
+  });
+}
+
 /* ---------- LIFF 初始化 ---------- */
 async function initLiff(){
   try{
@@ -877,6 +994,9 @@ async function initLiff(){
       const profile = await liff.getProfile();
       lineUserId = profile.userId;
       lineDisplayName = profile.displayName;
+      // 查這個 LINE 帳號已綁定的車牌；只用有橫線格式的（才能拆成兩個輸入框）
+      boundCars = (await fetchBoundCars()).filter(c => typeof c === 'string' && c.indexOf('-') > 0);
+      setupBoundUI();
     }
   }catch(err){
     console.warn('LIFF 初始化失敗:', err);
