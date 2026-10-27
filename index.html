@@ -430,10 +430,53 @@
     </div>
   </div>
 
+  <!-- ============ 精簡登記（?type=near|far） ============ -->
+  <div id="screen-slim" style="display:none;">
+    <div class="banner"><h1>道路救援登記</h1></div>
+    <div class="body-pad">
+      <p class="notice" id="sl-notice">請確認要救援的車輛</p>
+
+      <div class="field">
+        <label>車牌號碼 <span class="required-mark">*</span></label>
+        <div id="sl-bound-box" style="display:none;">
+          <div class="bound-list" id="sl-bound-list"></div>
+          <button type="button" class="link-btn" id="sl-other-car">這不是我的車／換一台車</button>
+        </div>
+        <div id="sl-manual">
+          <div class="plate-group">
+            <input type="text" id="sl-plate-1" placeholder="ABC" autocomplete="off" maxlength="6">
+            <span class="plate-dash">-</span>
+            <input type="text" id="sl-plate-2" placeholder="1234" autocomplete="off" maxlength="6">
+          </div>
+          <button type="button" class="link-btn" id="sl-back-bound" style="display:none;">‹ 回到我已綁定的車</button>
+        </div>
+      </div>
+
+      <div class="field" id="sl-store-field" style="display:none;">
+        <label>請問您的車子要送至哪一家店 <span class="required-mark">*</span></label>
+        <div class="store-group" id="sl-storeGroup">
+          <button type="button" class="store-option" data-store="金旺昇"><div class="store-name">金旺昇</div><div class="store-addr">新莊區中正路833號</div></button>
+          <button type="button" class="store-option" data-store="忍店"><div class="store-name">忍店</div><div class="store-addr">新莊區福營路431-8號</div></button>
+          <button type="button" class="store-option" data-store="金力盛"><div class="store-name">金力盛</div><div class="store-addr">新莊區新樹路148號</div></button>
+        </div>
+      </div>
+
+      <div class="pre-submit-note" id="sl-confirm" style="display:none;">
+        <div id="sl-confirm-text"></div>
+        <button type="button" class="submit-btn" id="sl-confirm-add" style="margin-top:10px;">是，新增這台車</button>
+        <button type="button" class="link-btn" id="sl-confirm-redo">我打錯了，重新輸入</button>
+      </div>
+
+      <p class="pre-submit-note">送出後，道路救援服務規則會傳到您的 LINE 對話。</p>
+      <button class="submit-btn" id="sl-btnSubmit" disabled>確認送出</button>
+      <p class="error-msg" id="sl-errorMsg"></p>
+    </div>
+  </div>
+
   <div id="screen-success">
     <div class="icon">✅</div>
-    <h2>已收到您的資料</h2>
-    <p>我們將盡快與您聯繫安排救援，<br>請留意 LINE 訊息通知。</p>
+    <h2 id="success-title">已收到您的資料</h2>
+    <p id="success-text">我們將盡快與您聯繫安排救援，<br>請留意 LINE 訊息通知。</p>
   </div>
 
 </div>
@@ -453,12 +496,14 @@ const screenChoice = document.getElementById('screen-choice');
 const screenOnsite = document.getElementById('screen-form-onsite');
 const screenOffsite = document.getElementById('screen-form-offsite');
 const screenSuccess = document.getElementById('screen-success');
+const screenSlim = document.getElementById('screen-slim');
 
 function showScreen(name){
   screenChoice.style.display = name === 'choice' ? 'block' : 'none';
   screenOnsite.style.display = name === 'onsite' ? 'block' : 'none';
   screenOffsite.style.display = name === 'offsite' ? 'block' : 'none';
   screenSuccess.style.display = name === 'success' ? 'block' : 'none';
+  screenSlim.style.display = name === 'slim' ? 'block' : 'none';
   window.scrollTo(0,0);
 }
 
@@ -981,13 +1026,192 @@ function setupBoundUI(){
   });
 }
 
+/* ---------- 精簡登記模式：?type=near（20分內）／far（20分以上委外） ---------- */
+function getReqType(){
+  let t = null;
+  try{ t = new URLSearchParams(location.search).get('type'); }catch(e){}
+  if(!t){
+    try{
+      const st = new URLSearchParams(location.search).get('liff.state');
+      if(st){ const q = st.indexOf('?') >= 0 ? st.slice(st.indexOf('?')) : st; t = new URLSearchParams(q).get('type'); }
+    }catch(e){}
+  }
+  return (t === 'near' || t === 'far') ? t : null;
+}
+const REQ_TYPE = getReqType();
+const slim = { type: REQ_TYPE, selectedBound: null, store: '' };
+
+function slimPlate(){
+  if(slim.selectedBound) return slim.selectedBound;
+  const p1 = document.getElementById('sl-plate-1').value.trim();
+  const p2 = document.getElementById('sl-plate-2').value.trim();
+  return `${p1}-${p2}`.toUpperCase();
+}
+function slimPlateOk(){
+  if(slim.selectedBound) return true;
+  return document.getElementById('sl-plate-1').value.trim().length >= 2
+      && document.getElementById('sl-plate-2').value.trim().length >= 2;
+}
+function slimUpdateSubmit(){
+  const ok = slimPlateOk() && (slim.type === 'far' || !!slim.store);
+  document.getElementById('sl-btnSubmit').disabled = !ok;
+}
+function slimRenderBound(){
+  const list = document.getElementById('sl-bound-list');
+  list.innerHTML = '';
+  boundCars.forEach(car => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'bound-item' + (slim.selectedBound === car ? ' selected' : '');
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const txt = document.createElement('span'); txt.textContent = car;
+    item.appendChild(dot); item.appendChild(txt);
+    item.addEventListener('click', () => { slim.selectedBound = car; slimRenderBound(); slimUpdateSubmit(); });
+    list.appendChild(item);
+  });
+}
+function slimShowBound(){
+  document.getElementById('sl-bound-box').style.display = '';
+  document.getElementById('sl-manual').style.display = 'none';
+  slim.selectedBound = (boundCars.length === 1) ? boundCars[0] : null;
+  slimRenderBound();
+  slimUpdateSubmit();
+}
+function slimShowManual(){
+  slim.selectedBound = null;
+  document.getElementById('sl-bound-box').style.display = 'none';
+  document.getElementById('sl-manual').style.display = '';
+  document.getElementById('sl-back-bound').style.display = boundCars.length ? '' : 'none';
+  document.getElementById('sl-plate-1').value = '';
+  document.getElementById('sl-plate-2').value = '';
+  slimUpdateSubmit();
+}
+
+async function bindLineUserRaw(carNo, confirmAction){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/bind_line_user`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      p_car_no: carNo,
+      p_line_user_id: lineUserId,
+      p_line_display_name: lineDisplayName || null,
+      ...(confirmAction ? { p_confirm_action: confirmAction } : {}),
+    }),
+  });
+  if(!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+async function slimSubmit(confirmedAdd){
+  const btn = document.getElementById('sl-btnSubmit');
+  const err = document.getElementById('sl-errorMsg');
+  const confirmBox = document.getElementById('sl-confirm');
+  err.style.display = 'none';
+  confirmBox.style.display = 'none';
+
+  if(!slimPlateOk()){ err.textContent = '請輸入完整車牌號碼。'; err.style.display = 'block'; return; }
+  if(slim.type === 'near' && !slim.store){ err.textContent = '請選擇要送至哪一家店。'; err.style.display = 'block'; return; }
+  if(!lineUserId){ err.textContent = '無法取得您的 LINE 身份，請確認是透過 LINE 開啟此頁面。'; err.style.display = 'block'; return; }
+
+  const carNo = slimPlate();
+  btn.disabled = true;
+  btn.textContent = '送出中…';
+
+  // 1) 綁定（失敗不阻擋 SOP：客人在路邊不能被綁定問題卡住）
+  let bindStatus = 'unknown';
+  try{
+    const r = await bindLineUserRaw(carNo, (confirmedAdd || isKnownBound(carNo)) ? 'add' : null);
+    if(r && r.need_confirm){
+      const cars = Array.isArray(r.existing_cars) ? r.existing_cars.join('、') : '';
+      document.getElementById('sl-confirm-text').textContent =
+        `您目前也綁定了車牌 ${cars}，這次要新增這一台 ${carNo} 嗎？`;
+      confirmBox.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '確認送出';
+      return;
+    }
+    bindStatus = (r && r.success) ? 'ok' : ((r && r.error) ? r.error : 'unknown');
+  }catch(e){
+    console.warn('bind_line_user 失敗（不阻擋 SOP）:', e);
+    bindStatus = 'bind_failed';
+  }
+
+  // 2) 傳 SOP
+  try{
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-roadside-sop`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: slim.type,
+        line_user_id: lineUserId,
+        line_display_name: lineDisplayName,
+        car_no: carNo,
+        store: slim.type === 'near' ? slim.store : '',
+        bind_status: bindStatus,
+      }),
+    });
+    if(!res.ok) throw new Error(await res.text());
+  }catch(e){
+    console.error('notify-roadside-sop 失敗:', e);
+    btn.disabled = false;
+    btn.textContent = '確認送出';
+    err.textContent = '送出失敗，請稍後再試一次。';
+    err.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('success-title').textContent = '已收到您的登記';
+  document.getElementById('success-text').innerHTML = '道路救援服務規則已傳送到 LINE 對話，<br>請回到聊天室查看。';
+  showScreen('success');
+  if(typeof liff !== 'undefined' && liff.isInClient()){
+    setTimeout(() => liff.closeWindow(), 3000);
+  }
+}
+
+function setupSlim(){
+  document.getElementById('sl-notice').innerHTML = slim.type === 'near'
+    ? '請確認要救援的車輛，<br>並選擇要送修的店家'
+    : '請確認要救援的車輛';
+  document.getElementById('sl-store-field').style.display = slim.type === 'near' ? '' : 'none';
+
+  document.getElementById('sl-other-car').addEventListener('click', slimShowManual);
+  document.getElementById('sl-back-bound').addEventListener('click', slimShowBound);
+  ['sl-plate-1','sl-plate-2'].forEach(id => document.getElementById(id).addEventListener('input', slimUpdateSubmit));
+
+  const opts = Array.from(document.querySelectorAll('#sl-storeGroup .store-option'));
+  opts.forEach(b => b.addEventListener('click', () => {
+    slim.store = b.dataset.store;
+    opts.forEach(o => o.classList.toggle('selected', o === b));
+    slimUpdateSubmit();
+  }));
+
+  document.getElementById('sl-btnSubmit').addEventListener('click', () => slimSubmit(false));
+  document.getElementById('sl-confirm-add').addEventListener('click', () => slimSubmit(true));
+  document.getElementById('sl-confirm-redo').addEventListener('click', () => {
+    document.getElementById('sl-confirm').style.display = 'none';
+    slimShowManual();
+    document.getElementById('sl-plate-1').focus();
+  });
+
+  if(boundCars.length > 0) slimShowBound(); else slimShowManual();
+  showScreen('slim');
+}
+
 /* ---------- LIFF 初始化 ---------- */
 async function initLiff(){
   try{
     await liff.init({ liffId: LIFF_ID });
     if(!liff.isLoggedIn()){
       if(liff.isInClient()){
-        liff.login({ redirectUri: location.href.split('?')[0] });
+        liff.login({ redirectUri: REQ_TYPE ? location.href : location.href.split('?')[0] });
         return;
       }
     } else {
@@ -1002,7 +1226,7 @@ async function initLiff(){
     console.warn('LIFF 初始化失敗:', err);
   }finally{
     screenLoading.style.display = 'none';
-    showScreen('choice');
+    if(REQ_TYPE){ setupSlim(); } else { showScreen('choice'); }
   }
 }
 initLiff();
